@@ -1,0 +1,33 @@
+name: Flutter Android validation
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: ./tool/bootstrap_platforms.sh
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  android-debug-build:
+    needs: analyze-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: ./tool/bootstrap_platforms.sh
+      - run: flutter pub get
+      - run: flutter build apk --debug
