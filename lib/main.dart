@@ -56,7 +56,7 @@ class LumaSleepApp extends StatefulWidget {
 
 class _LumaSleepAppState extends State<LumaSleepApp> {
   bool _lightMode = AppColors.lightMode;
-  final SharedPreferencesAsync _preferences = SharedPreferencesAsync();
+  SharedPreferencesAsync? _preferences;
 
   @override
   void initState() {
@@ -66,7 +66,8 @@ class _LumaSleepAppState extends State<LumaSleepApp> {
 
   Future<void> _loadAppearance() async {
     try {
-      final saved = await _preferences.getBool('luma_light_mode');
+      final preferences = _preferences ??= SharedPreferencesAsync();
+      final saved = await preferences.getBool('luma_light_mode');
       if (!mounted || saved == null) return;
       AppColors.lightMode = saved;
       setState(() => _lightMode = saved);
@@ -83,7 +84,8 @@ class _LumaSleepAppState extends State<LumaSleepApp> {
 
   Future<void> _persistAppearance(bool value) async {
     try {
-      await _preferences.setBool('luma_light_mode', value);
+      final preferences = _preferences ??= SharedPreferencesAsync();
+      await preferences.setBool('luma_light_mode', value);
     } catch (_) {
       // Appearance still changes for this run if persistence is unavailable.
     }
