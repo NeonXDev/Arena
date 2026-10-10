@@ -828,13 +828,13 @@ class _SleepHomePageState extends State<SleepHomePage> with WidgetsBindingObserv
                 SizedBox(height: 22),
                 _buildTrackingCard(),
                 SizedBox(height: 26),
-                _buildSectionHeading('Last night', 'View report', () {
+                _sectionHeading('Last night', 'View report', () {
                   _onTabChanged(AppTab.insights.index);
                 }),
                 SizedBox(height: 12),
                 _buildLastNightCard(),
                 SizedBox(height: 26),
-                _buildSectionHeading('Sound monitor', 'How it works', () {
+                _sectionHeading('Sound monitor', 'How it works', () {
                   _showSoundInfo();
                 }),
                 SizedBox(height: 12),
