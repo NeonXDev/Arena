@@ -24,7 +24,14 @@ jobs:
         with:
           name: flutter-analyze-log
           path: flutter-analyze.log
-      - run: flutter test
+      - name: Run flutter test
+        run: flutter test 2>&1 | tee flutter-test.log
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-test-log
+          path: flutter-test.log
 
   android-debug-build:
     needs: analyze-and-test
