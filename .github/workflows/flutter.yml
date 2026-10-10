@@ -16,35 +16,8 @@ jobs:
           cache: true
       - run: ./tool/bootstrap_platforms.sh
       - run: flutter pub get
-      - name: Run flutter analyze
-        run: flutter analyze 2>&1 | tee flutter-analyze.log
-      - name: Upload analyzer log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: flutter-analyze-log
-          path: flutter-analyze.log
-      - name: Run flutter test
-        shell: bash
-        run: |
-          set +e
-          flutter test 2>&1 | tee flutter-test.log
-          test_status=${PIPESTATUS[0]}
-          if [[ $test_status -ne 0 ]]; then
-            python3 - <<'PYLOG'
-          from pathlib import Path
-          output = Path('flutter-test.log').read_text()
-          output = output.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-          print(f'::error file=flutter-test.log::{output[:60000]}')
-          PYLOG
-          fi
-          exit $test_status
-      - name: Upload test log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: flutter-test-log
-          path: flutter-test.log
+      - run: flutter analyze
+      - run: flutter test
 
   android-debug-build:
     needs: analyze-and-test
