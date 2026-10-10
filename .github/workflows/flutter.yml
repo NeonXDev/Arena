@@ -16,7 +16,21 @@ jobs:
           cache: true
       - run: ./tool/bootstrap_platforms.sh
       - run: flutter pub get
-      - run: flutter analyze
+      - name: Run flutter analyze
+        shell: bash
+        run: |
+          set +e
+          flutter analyze 2>&1 | tee flutter-analyze.log
+          analyze_status=${PIPESTATUS[0]}
+          if [[ $analyze_status -ne 0 ]]; then
+            python3 - <<'PYLOG'
+          from pathlib import Path
+          output = Path('flutter-analyze.log').read_text()
+          output = output.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error file=flutter-analyze.log::{output[:60000]}')
+          PYLOG
+          fi
+          exit $analyze_status
       - run: flutter test
 
   android-debug-build:
