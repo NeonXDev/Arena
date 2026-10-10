@@ -8,6 +8,10 @@ void main() {
 
     expect(find.text('Good evening'), findsOneWidget);
     expect(find.text('Start sleep tracking'), findsOneWidget);
+
+    // The sound section is below the fold in the scrollable Tonight page.
+    await tester.drag(find.byType(CustomScrollView).first, const Offset(0, -700));
+    await tester.pumpAndSettle();
     expect(find.text('Sound monitor'), findsOneWidget);
   });
 }
