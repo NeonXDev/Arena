@@ -25,7 +25,20 @@ jobs:
           name: flutter-analyze-log
           path: flutter-analyze.log
       - name: Run flutter test
-        run: flutter test 2>&1 | tee flutter-test.log
+        shell: bash
+        run: |
+          set +e
+          flutter test 2>&1 | tee flutter-test.log
+          test_status=${PIPESTATUS[0]}
+          if [[ $test_status -ne 0 ]]; then
+            python3 - <<'PYLOG'
+          from pathlib import Path
+          output = Path('flutter-test.log').read_text()
+          output = output.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          print(f'::error file=flutter-test.log::{output[:60000]}')
+          PYLOG
+          fi
+          exit $test_status
       - name: Upload test log
         if: always()
         uses: actions/upload-artifact@v4
