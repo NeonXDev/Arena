@@ -13,6 +13,7 @@ fi
 
 python3 - <<'PY'
 from pathlib import Path
+import re
 
 manifest_path = Path('android/app/src/main/AndroidManifest.xml')
 if not manifest_path.exists():
@@ -27,6 +28,7 @@ permissions = [
     'android.permission.FOREGROUND_SERVICE_MICROPHONE',
     'android.permission.FOREGROUND_SERVICE_SPECIAL_USE',
     'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
+    'android.permission.WAKE_LOCK',
 ]
 permission_xml = ''.join(
     f'    <uses-permission android:name="{permission}" />\n'
@@ -43,6 +45,7 @@ services = '''
     <service
         android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
         android:exported="false"
+        android:stopWithTask="false"
         android:foregroundServiceType="microphone" />
 
     <service
@@ -54,7 +57,26 @@ services = '''
             android:value="sleep_tracking_floating_control" />
     </service>
 '''
-if 'com.pravera.flutter_foreground_task.service.ForegroundService' not in text:
+foreground_service_name = 'com.pravera.flutter_foreground_task.service.ForegroundService'
+if foreground_service_name in text:
+    service_name_index = text.find(f'android:name="{foreground_service_name}"')
+    service_start = text.rfind('<service', 0, service_name_index)
+    service_end = text.find('>', service_name_index)
+    service_block = text[service_start:service_end]
+    if 'android:stopWithTask=' in service_block:
+        service_block = re.sub(
+            r'android:stopWithTask="[^"]+"',
+            'android:stopWithTask="false"',
+            service_block,
+        )
+    else:
+        service_block = service_block.replace(
+            'android:exported="false"',
+            'android:exported="false"\n        android:stopWithTask="false"',
+        )
+    text = text[:service_start] + service_block + text[service_end:]
+
+if foreground_service_name not in text:
     closing = text.rfind('</application>')
     if closing == -1:
         raise SystemExit('Could not find </application> in AndroidManifest.xml')

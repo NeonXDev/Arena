@@ -8,7 +8,8 @@ A privacy-first Flutter sleep and sound tracker for Android. Luma records a loca
 - Local microphone recording with `record`.
 - In-app playback of saved session recordings with `just_audio`.
 - Volume-based possible-snore and sound-event markers.
-- Android foreground microphone service so recording can continue with the screen locked.
+- Android foreground microphone service so recording continues when the screen is off, the phone is locked, or the app is minimized with the system Back action.
+- A sticky foreground notification, CPU wake lock, and battery-optimization prompt for more reliable overnight capture.
 - Draggable Android floating sleep control using `flutter_overlay_window`.
 - Local persistence for sessions and sound events using `SharedPreferencesAsync`.
 - Clear-all-data action that deletes the local index and Luma `.m4a` recordings.
@@ -46,7 +47,8 @@ The bootstrap script is idempotent. It adds:
 - `POST_NOTIFICATIONS`
 - `SYSTEM_ALERT_WINDOW`
 - Android foreground-service permissions
-- Microphone foreground service declaration
+- Microphone foreground service declaration with `stopWithTask="false"` so minimizing the app does not stop recording
+- `WAKE_LOCK` and battery-optimization request configuration
 - Overlay service declaration
 - Android minimum SDK 23
 
@@ -58,6 +60,8 @@ On the first session, Android may request:
 2. Notification access for the foreground-service notification
 3. Battery-optimization exemption for reliable overnight recording
 4. “Display over other apps” access when the optional floating control is enabled
+
+Screen-off and locked-screen tracking is supported only while Android keeps Luma's foreground service alive. Battery managers from some phone manufacturers can still stop background work, so allow Luma to run unrestricted in the device's battery settings if necessary. A phone that is fully powered off cannot run an app or record audio; tracking resumes only after the device is powered on and a new session is started.
 
 If the overlay is not needed, leave **Floating sleep control** disabled in Settings. Tracking still works with the Android foreground service.
 
@@ -73,4 +77,4 @@ The repository includes widget/model tests and a GitHub Actions workflow that ru
 - `flutter test`
 - Android debug APK build
 
-Microphone, screen-lock, battery, and overlay behavior must still be verified on a physical Android device.
+Microphone, minimize, screen-lock, battery, and overlay behavior must still be verified on a physical Android device. A fully powered-off phone cannot continue tracking, which is an Android hardware limitation rather than an app permission.

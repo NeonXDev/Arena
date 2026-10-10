@@ -5,6 +5,9 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import 'local_storage.dart';
+import 'sleep_models.dart';
+
 const String _stopNotificationAction = 'stop_sleep';
 
 /// The callback used by Android's foreground service isolate.
@@ -19,12 +22,20 @@ class SleepRecordingTaskHandler extends TaskHandler {
   DateTime? _lastEvent;
   bool _monitorEnabled = true;
   double _threshold = -31;
+  final LocalSleepStorage _storage = LocalSleepStorage();
+  final List<SleepEvent> _events = [];
+  Future<void> _eventSaveQueue = Future<void>.value();
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     final sensitivity = await FlutterForegroundTask.getData<int>(key: 'sensitivity') ?? 2;
     _threshold = _thresholdForSensitivity(sensitivity);
     _monitorEnabled = await FlutterForegroundTask.getData<bool>(key: 'monitorEnabled') ?? true;
+    try {
+      _events.addAll(await _storage.loadEvents());
+    } catch (_) {
+      // Recording must not fail because the optional event index is unavailable.
+    }
 
     final recorder = AudioRecorder();
     if (!await recorder.hasPermission(request: false)) {
@@ -141,14 +152,40 @@ class SleepRecordingTaskHandler extends TaskHandler {
       if (_lastEvent != null && now.difference(_lastEvent!).inSeconds < 5) return;
       _lastEvent = now;
       final possibleSnore = current > -20;
+      final event = SleepEvent(
+        time: now,
+        kind: possibleSnore ? 'Possible snore' : 'Sound detected',
+        detail: possibleSnore
+            ? 'Louder volume pattern detected'
+            : 'Ambient sound above your threshold',
+        decibels: math.max(0.0, 60 + current).toDouble(),
+        isSnore: possibleSnore,
+      );
+      final persisted = await _persistEvent(event);
       FlutterForegroundTask.sendDataToMain(<String, dynamic>{
         'type': 'sound_event',
         'timestamp': now.millisecondsSinceEpoch,
         'isSnore': possibleSnore,
-        'decibels': math.max(0.0, 60 + current).toDouble(),
+        'decibels': event.decibels,
+        'persisted': persisted,
       });
     } catch (_) {
       // Some devices do not expose amplitude immediately after start.
+    }
+  }
+
+  Future<bool> _persistEvent(SleepEvent event) async {
+    _events.insert(0, event);
+    if (_events.length > 500) _events.removeLast();
+
+    final snapshot = List<SleepEvent>.from(_events);
+    final nextWrite = _eventSaveQueue.then((_) => _storage.saveEvents(snapshot));
+    _eventSaveQueue = nextWrite.catchError((_) {});
+    try {
+      await nextWrite;
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 

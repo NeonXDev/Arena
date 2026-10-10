@@ -137,9 +137,11 @@ class _LumaSleepAppState extends State<LumaSleepApp> {
           ),
         ),
       ),
-      home: SleepHomePage(
-        lightMode: _lightMode,
-        onLightModeChanged: _setLightMode,
+      home: WithForegroundTask(
+        child: SleepHomePage(
+          lightMode: _lightMode,
+          onLightModeChanged: _setLightMode,
+        ),
       ),
     );
   }
@@ -159,7 +161,7 @@ class SleepHomePage extends StatefulWidget {
   State<SleepHomePage> createState() => _SleepHomePageState();
 }
 
-class _SleepHomePageState extends State<SleepHomePage> {
+class _SleepHomePageState extends State<SleepHomePage> with WidgetsBindingObserver {
   AppTab _activeTab = AppTab.tonight;
   bool _isTracking = false;
   bool _isStarting = false;
@@ -193,6 +195,7 @@ class _SleepHomePageState extends State<SleepHomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (Platform.isAndroid) {
       _overlaySubscription = FlutterOverlayWindow.overlayListener.listen(_handleOverlayMessage);
       FlutterForegroundTask.addTaskDataCallback(_handleForegroundTaskData);
@@ -202,7 +205,17 @@ class _SleepHomePageState extends State<SleepHomePage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_isStopping) {
+      // The foreground task persists sound markers from its own isolate while
+      // this isolate is backgrounded. Reload them when the UI is visible again.
+      unawaited(_loadLocalData());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _sessionTimer?.cancel();
     _amplitudeTimer?.cancel();
     _stopWatchdog?.cancel();
@@ -285,7 +298,9 @@ class _SleepHomePageState extends State<SleepHomePage> {
         );
 
       });
-      _saveEvents();
+      if (data['persisted'] != true) {
+        _saveEvents();
+      }
     } else if (type == 'service_error') {
       final message = data['message'] as String? ?? 'Background recording stopped.';
       final completer = _foregroundRecordingStarted;
@@ -331,21 +346,36 @@ class _SleepHomePageState extends State<SleepHomePage> {
   }
 
   Future<void> _requestBackgroundPermissions() async {
+    if (!Platform.isAndroid) return;
+
     try {
-      final permission = await FlutterForegroundTask.checkNotificationPermission();
-      if (permission != NotificationPermission.granted) {
+      // Android 13+ can hide the foreground-service notification when this is
+      // denied. Ask before starting so the user sees the service that protects
+      // the microphone session. Older Android versions report this as granted.
+      final notificationPermission =
+          await FlutterForegroundTask.checkNotificationPermission();
+      if (notificationPermission != NotificationPermission.granted) {
         await FlutterForegroundTask.requestNotificationPermission();
       }
+    } catch (_) {
+      // A denied notification prompt must not prevent microphone recording.
+    }
+
+    try {
+      // Do this while the app is visible. Android may show a system settings
+      // dialog, and the exemption helps OEMs keep the service alive overnight.
       if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
         await FlutterForegroundTask.requestIgnoreBatteryOptimization();
       }
     } catch (_) {
-      // Background permission prompts are platform-specific. Recording can still start.
+      // Some vendors do not expose this exemption. The foreground service
+      // still provides the platform-supported background execution path.
     }
   }
 
   Future<String> _startAndroidRecordingService() async {
     await _initForegroundService();
+    await _requestBackgroundPermissions();
     await FlutterForegroundTask.saveData(key: 'sensitivity', value: _sensitivity);
     await FlutterForegroundTask.saveData(key: 'monitorEnabled', value: _soundMonitorEnabled);
 
@@ -359,15 +389,15 @@ class _SleepHomePageState extends State<SleepHomePage> {
         serviceId: 1905,
         notificationTitle: 'Luma Sleep',
         notificationText: 'Starting sleep sound monitoring…',
+        notificationButtons: const [
+          NotificationButton(id: 'stop_sleep', text: 'Stop'),
+        ],
         callback: startSleepRecordingService,
       );
       if (result is ServiceRequestFailure) {
         throw result.error;
       }
-      // These prompts should not block the Start button. The service can begin
-      // immediately, then the user can grant notification/battery permissions.
-      unawaited(_requestBackgroundPermissions());
-      return await completer.future.timeout(Duration(seconds: 6));
+      return await completer.future.timeout(Duration(seconds: 12));
     } finally {
       if (identical(_foregroundRecordingStarted, completer)) {
         _foregroundRecordingStarted = null;
@@ -412,20 +442,24 @@ class _SleepHomePageState extends State<SleepHomePage> {
         return;
       }
 
-      try {
-        final foregroundPath = await _startAndroidRecordingService();
-        _activeAudioPath = foregroundPath;
-        await recorder.dispose();
-        _usingForegroundService = true;
-        usingForegroundService = true;
-      } catch (_) {
-        // If the native foreground-service configuration is missing, still
-        // allow tracking in the app instead of leaving the button stuck.
+      if (Platform.isAndroid) {
         try {
-          await FlutterForegroundTask.stopService().timeout(Duration(seconds: 3));
-        } catch (_) {}
+          final foregroundPath = await _startAndroidRecordingService();
+          _activeAudioPath = foregroundPath;
+          await recorder.dispose();
+          _usingForegroundService = true;
+          usingForegroundService = true;
+        } catch (_) {
+          // If the native foreground-service configuration is missing, still
+          // allow tracking in the app instead of leaving the button stuck.
+          try {
+            await FlutterForegroundTask.stopService().timeout(Duration(seconds: 3));
+          } catch (_) {}
+          await _startLocalRecording(recorder);
+          _usingForegroundService = false;
+        }
+      } else {
         await _startLocalRecording(recorder);
-        _usingForegroundService = false;
       }
 
       if (!mounted) {
@@ -970,14 +1004,14 @@ class _SleepHomePageState extends State<SleepHomePage> {
   }
 
   String _todayLabel() {
-    weekdays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
-    months = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
+    final weekdays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+    final months = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
     final now = DateTime.now();
     return '${weekdays[now.weekday - 1]}, ${months[now.month - 1]} ${now.day}';
   }
 
   String _sessionDate(DateTime value) {
-    weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    final weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     return '${weekdays[value.weekday - 1]} night';
   }
 
@@ -1363,7 +1397,7 @@ class _SleepHomePageState extends State<SleepHomePage> {
   }
 
   String _shortSessionDate(DateTime value) {
-    weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return weekdays[value.weekday - 1];
   }
 
@@ -1712,6 +1746,35 @@ class _SleepHomePageState extends State<SleepHomePage> {
                       onChanged: widget.onLightModeChanged,
                       activeColor: AppColors.mint,
                     ),
+                  ),
+                ]),
+                SizedBox(height: 25),
+                _settingsGroupLabel('BACKGROUND LIMITS'),
+                SizedBox(height: 9),
+                _settingsCard([
+                  _settingRow(
+                    icon: Icons.lock_outline_rounded,
+                    color: AppColors.blue,
+                    title: 'Screen off & locked',
+                    subtitle: !_isTracking
+                        ? 'Supported during an active session'
+                        : _usingForegroundService
+                            ? 'Foreground service is active'
+                            : 'App-only fallback; keep Luma open',
+                    trailing: Icon(
+                      _isTracking && !_usingForegroundService
+                          ? Icons.warning_amber_rounded
+                          : Icons.check_circle_outline_rounded,
+                      color: _isTracking && !_usingForegroundService ? AppColors.amber : AppColors.mint,
+                    ),
+                  ),
+                  _divider(),
+                  _settingRow(
+                    icon: Icons.power_settings_new_rounded,
+                    color: AppColors.coral,
+                    title: 'Phone powered off',
+                    subtitle: 'Cannot record while the device is powered off',
+                    trailing: SizedBox.shrink(),
                   ),
                 ]),
                 SizedBox(height: 25),
