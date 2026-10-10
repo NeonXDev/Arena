@@ -126,7 +126,7 @@ class _LumaSleepAppState extends State<LumaSleepApp> {
           backgroundColor: AppColors.surface,
           indicatorColor: AppColors.lavender.withValues(alpha: .18),
           height: 72,
-          labelTextStyle: MaterialStatePropertyAll(
+          labelTextStyle: WidgetStatePropertyAll(
             base.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
         ),
@@ -150,7 +150,7 @@ class _LumaSleepAppState extends State<LumaSleepApp> {
 }
 
 class SleepHomePage extends StatefulWidget {
-  SleepHomePage({
+  const SleepHomePage({
     super.key,
     required this.lightMode,
     required this.onLightModeChanged,
@@ -1149,7 +1149,7 @@ class _SleepHomePageState extends State<SleepHomePage> with WidgetsBindingObserv
               Switch.adaptive(
                 value: _soundMonitorEnabled,
                 onChanged: _setSoundMonitorEnabled,
-                activeColor: AppColors.mint,
+                activeThumbColor: AppColors.mint,
               ),
             ],
           ),
@@ -1429,10 +1429,12 @@ class _SleepHomePageState extends State<SleepHomePage> with WidgetsBindingObserv
         return;
       }
 
-      if (mounted) setState(() {
-        _playingAudioPath = path;
-        _isLoadingAudio = true;
-      });
+      if (mounted) {
+        setState(() {
+          _playingAudioPath = path;
+          _isLoadingAudio = true;
+        });
+      }
       await _audioPlayer.setFilePath(path);
       if (mounted) setState(() => _isLoadingAudio = false);
       unawaited(_playLoadedAudio());
@@ -1709,7 +1711,7 @@ class _SleepHomePageState extends State<SleepHomePage> with WidgetsBindingObserv
                     trailing: Switch.adaptive(
                       value: _soundMonitorEnabled,
                       onChanged: _setSoundMonitorEnabled,
-                      activeColor: AppColors.mint,
+                      activeThumbColor: AppColors.mint,
                     ),
                   ),
                   _divider(),
@@ -1725,7 +1727,7 @@ class _SleepHomePageState extends State<SleepHomePage> with WidgetsBindingObserv
                         if (value && _isTracking) _showSleepOverlayIfEnabled();
                         if (!value) _hideSleepOverlay();
                       },
-                      activeColor: AppColors.mint,
+                      activeThumbColor: AppColors.mint,
                     ),
                   ),
                   _divider(),
@@ -1746,7 +1748,7 @@ class _SleepHomePageState extends State<SleepHomePage> with WidgetsBindingObserv
                     trailing: Switch.adaptive(
                       value: widget.lightMode,
                       onChanged: widget.onLightModeChanged,
-                      activeColor: AppColors.mint,
+                      activeThumbColor: AppColors.mint,
                     ),
                   ),
                 ]),
@@ -2020,22 +2022,28 @@ class _SleepHomePageState extends State<SleepHomePage> with WidgetsBindingObserv
                 SizedBox(height: 7),
                 Text('Choose how quiet a sound can be before Luma saves it.', style: TextStyle(color: AppColors.muted, fontSize: 13)),
                 SizedBox(height: 12),
-                ...['Quiet', 'Balanced', 'Sensitive'].asMap().entries.map((entry) {
-                  final value = entry.key + 1;
-                  return RadioListTile<int>(
-                    value: value,
-                    groupValue: _sensitivity,
-                    onChanged: (newValue) {
-                      if (newValue == null) return;
-                      _setSensitivity(newValue);
-                      setModalState(() {});
-                    },
-                    title: Text(entry.value),
-                    subtitle: Text(['Only louder sounds', 'A good balance', 'Catches softer sounds'][entry.key]),
-                    activeColor: AppColors.lavender,
-                    contentPadding: EdgeInsets.zero,
-                  );
-                }),
+                RadioGroup<int>(
+                  groupValue: _sensitivity,
+                  onChanged: (newValue) {
+                    if (newValue == null) return;
+                    _setSensitivity(newValue);
+                    setModalState(() {});
+                  },
+                  child: Column(
+                    children: [
+                      ...['Quiet', 'Balanced', 'Sensitive'].asMap().entries.map((entry) {
+                        final value = entry.key + 1;
+                        return RadioListTile<int>(
+                          value: value,
+                          title: Text(entry.value),
+                          subtitle: Text(['Only louder sounds', 'A good balance', 'Catches softer sounds'][entry.key]),
+                          activeColor: AppColors.lavender,
+                          contentPadding: EdgeInsets.zero,
+                        );
+                      }),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -2086,7 +2094,7 @@ class _SleepHomePageState extends State<SleepHomePage> with WidgetsBindingObserv
 }
 
 class _SleepOverlayApp extends StatelessWidget {
-  _SleepOverlayApp();
+  const _SleepOverlayApp();
 
   @override
   Widget build(BuildContext context) {
@@ -2100,13 +2108,13 @@ class _SleepOverlayApp extends StatelessWidget {
           surface: AppColors.surface,
         ),
       ),
-      home: _SleepOverlayPanel(),
+      home: const _SleepOverlayPanel(),
     );
   }
 }
 
 class _SleepOverlayPanel extends StatefulWidget {
-  _SleepOverlayPanel();
+  const _SleepOverlayPanel();
 
   @override
   State<_SleepOverlayPanel> createState() => _SleepOverlayPanelState();
@@ -2196,7 +2204,7 @@ class _SleepOverlayPanelState extends State<_SleepOverlayPanel> {
 }
 
 class _InlineMetric extends StatelessWidget {
-  _InlineMetric({required this.label, required this.value, required this.icon});
+  const _InlineMetric({required this.label, required this.value, required this.icon});
 
   final String label;
   final String value;
