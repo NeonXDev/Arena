@@ -16,7 +16,14 @@ jobs:
           cache: true
       - run: ./tool/bootstrap_platforms.sh
       - run: flutter pub get
-      - run: flutter analyze
+      - name: Run flutter analyze
+        run: flutter analyze 2>&1 | tee flutter-analyze.log
+      - name: Upload analyzer log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-analyze-log
+          path: flutter-analyze.log
       - run: flutter test
 
   android-debug-build:
